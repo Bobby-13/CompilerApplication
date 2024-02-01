@@ -11,8 +11,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class CodeExecutionService {
@@ -37,8 +35,9 @@ public class CodeExecutionService {
         try {
             System.out.println("After code Execution result : " + result);
             return result;
-        } finally {
-            codeFileManager.removeCodeFile(codeFile.getJobID(), language, result.getOutputExt());
+        }
+        finally {
+            codeFileManager.removeCodeFile(codeFile.getJobID(), language, getOutputExtension(language));
         }
     }
 
@@ -123,7 +122,6 @@ public class CodeExecutionService {
                 // Measure storage capacity after execution
                 long outputSize = compiledPath.toFile().length();
                 System.out.println("Output Size: " + outputSize + " bytes");
-                result.setStorageCapacity(outputSize + " Bytes");
 
             if (compilationProcess.exitValue() == 0) {
                 String chmodCommand = "chmod +x " + compiledBinaryPath;
@@ -145,7 +143,6 @@ public class CodeExecutionService {
                 String res = errorMessage.toString().replaceAll(regex, "Main.");
                 result.setError(res);
                 return result;
-//                throw new RuntimeException(errorMessage.toString());
             }
 
                 System.out.println("After Compilation ::");
@@ -153,19 +150,16 @@ public class CodeExecutionService {
                     ProcessBuilder processBuilder1 = new ProcessBuilder(compiledBinaryPath);
 
                     Process process1 = processBuilder1.start();
-//                BufferedReader reader = new BufferedReader(new InputStreamReader(process1.getInputStream()));
-//                StringBuilder output = new StringBuilder();
                     if (input != null && !input.isEmpty()) {
                         try (OutputStream outputStream = process1.getOutputStream()) {
                             outputStream.write(input.getBytes());
                             System.out.println("Input field :" + input.getBytes());
                         }
                     }
-                    process1.waitFor();
-
 
                     BufferedReader reader = new BufferedReader(new InputStreamReader(process1.getInputStream()));
                     StringBuilder output = new StringBuilder();
+
                     Thread timeoutThread = new Thread(() -> {
                         try {
                             String line;
@@ -181,27 +175,24 @@ public class CodeExecutionService {
 
                             System.out.println("Execution Time: " + executionTime + " milliseconds");
 
-                        } catch (InterruptedException e) {
-                            result.setError(e.toString());
-                            e.printStackTrace();
-                        } catch (IOException e) {
-                            result.setError(e.toString());
+                        }  catch (InterruptedException | IOException e) {
+                            result.setError("Runtime Exceeded");
                             throw new RuntimeException("RunTime Exceeded");
-                        }
-                        if (process1.isAlive()) {
-                            System.out.println("Process exceeded the timeout. Destroying...");
-                            process1.destroy();
                         }
                     });
 
                     timeoutThread.start();
                     timeoutThread.join(1 * 1000);
-
+                if (timeoutThread.isAlive()) {
+                    timeoutThread.interrupt();
+                    process1.destroy();
+                    throw new RuntimeException("Process execution exceeded time limit");
+                }
                     System.out.println("Code Executed :");
-                    result.setOutput(output.toString());
-                    result.setOutputExt(outputExt);
-
+                  result.setOutput(output.toString());
                     return result;
+
+
 
             } else {
                 ProcessBuilder processBuilder = new ProcessBuilder();
@@ -228,30 +219,28 @@ public class CodeExecutionService {
                         while ((line = reader.readLine()) != null) {
                             System.out.println("Output block : ");
                             output.append(line).append("\n");
+                            System.out.println(output);
                             long outputSize = output.toString().getBytes().length;
-                            result.setStorageCapacity(outputSize + " Bytes");
                         }
                         process.waitFor();
                         long endTime = System.currentTimeMillis();
                         long executionTime = endTime - startTime;
                         result.setExeTime(executionTime + " milliseconds");
-
                         System.out.println("Execution Time: " + executionTime + " milliseconds");
-
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    } catch (IOException e) {
+                    } catch (InterruptedException | IOException e) {
+                        result.setError("Runtime Exceeded");
                         throw new RuntimeException("RunTime Exceeded");
-                    }
-                    if (process.isAlive()) {
-                        System.out.println("Process exceeded the timeout. Destroying...");
-                        process.destroy();
                     }
                 });
 
                 timeoutThread.start();
                 timeoutThread.join(1 * 1000);
-                process.destroy();
+                if (timeoutThread.isAlive()) {
+                    timeoutThread.interrupt();
+                    process.destroy();
+                    throw new RuntimeException("Process execution exceeded time limit");
+                }
+
 
                 if(output.toString().contains("codes/")){
 
@@ -260,26 +249,20 @@ public class CodeExecutionService {
                         String res = output.toString().replaceAll(regex, "Main.py");
                         result.setError(res);
                     }else {
-                        String regex = "codes/[a-zA-Z0-9-]+\\.java";
-                        String res = output.toString().replaceAll(regex, "Main.java");
+                        String regex = "codes/[a-zA-Z0-9-]+\\.";
+                        String res = output.toString().replaceAll(regex, "Main.");
                         result.setError(res);
                     }
-                }
-                else{
+                }else {
                     result.setOutput(output.toString());
                 }
 
                 String k = codeFile.getFileName().replaceAll("\\.\\w+", "");
 
-                result.setOutputExt(k);
-
                 return result;
             }
-        } catch (IOException | InterruptedException e) {
-            result.setError(e.toString());
-            e.printStackTrace();
-            System.out.println(e);
-            return result;
+        } catch (Exception e) {
+            throw new Exception(e.toString());
         }
     }
 

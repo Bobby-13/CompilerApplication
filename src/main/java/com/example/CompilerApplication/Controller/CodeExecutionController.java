@@ -6,6 +6,7 @@ import com.example.CompilerApplication.DTO.CodeExecutionResult;
 import com.example.CompilerApplication.Service.CodeExecutionService;
 import com.example.CompilerApplication.Service.CodeFileManager;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -20,14 +21,14 @@ public class CodeExecutionController {
     private CodeExecutionService codeExecutionService;
 
     @GetMapping("/execution{id}")
-    public CodeExecutionResult runCode(@RequestBody CodeExecutionRequest request, @PathVariable String id) {
+    public ResponseEntity<?> runCode(@RequestBody CodeExecutionRequest request, @PathVariable String id) {
         try {
             CodeExecutionResult result = codeExecutionService.runCode(request,id);
-            return result;
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             System.out.println(e);
-//            CodeExecutionResult codeExecutionResult = handleException(e);
-            return CodeExecutionResult.builder().error(e.toString()).exeTime("TimeLimit Exceeded").build();
+            CodeExecutionResult codeExecutionResult = CodeExecutionResult.builder().error(e.toString().replaceAll(".*\\: ","")).build();
+            return ResponseEntity.ok(codeExecutionResult);
         }
     }
 
@@ -76,9 +77,5 @@ public class CodeExecutionController {
             return err;
         }
     }
-
-//    private <T> T handleException(Exception e) {
-//        throw new RuntimeException("An error occurred: " + e.getMessage());
-//    }
 }
 
